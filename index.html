@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>网页访问文件夹</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: #f5f5f5;
+      font-family: Arial, sans-serif;
+    }
+
+    button {
+      font-size: 1rem;
+      font-weight: bold;
+      color: #fff;
+      background-color: #007bff;
+      padding: 5px 10px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: background-color 0.3s ease;
+    }
+
+    button:hover {
+      background-color: #0069d9;
+    }
+
+    .contents {
+      display: flex;
+      justify-content: space-between;
+      width: calc(100% - 20px);
+      height: calc(100vh - 60px);
+      margin: 10px auto;
+      box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+    }
+
+    .left {
+      width: 30%;
+      max-height: calc(100vh - 60px);
+      background-color: #fff;
+      border: 1px solid #ccc;
+      overflow: auto;
+    }
+
+    .ul-wrapper {
+      width: auto;
+      padding: 5px 10px;
+      background-color: #fff;
+      border-left: 1px solid #ccc;
+      cursor: pointer;
+    }
+
+    .list-item {
+      width: auto;
+      padding: 5px 10px;
+      transition: background-color 0.3s ease;
+      border-left: 1px solid #ccc;
+      list-style: none;
+      cursor: pointer;
+    }
+
+    .list-item:hover {
+      background-color: #f5f5f5;
+    }
+
+    .right {
+      width: 68%;
+      padding: 10px;
+      max-height: calc(100vh - 60px);
+      background-color: #fff;
+      border: 1px solid #ccc;
+      overflow: auto;
+    }
+
+    .card-container {
+      display: flex;
+      flex-wrap: wrap;
+    }
+
+    .card {
+      width: 100px;
+      height: 100px;
+      background-color: #ddd;
+      margin: 10px;
+      display: inline-block;
+      transition: all 0.3s;
+      overflow: hidden;
+      cursor: pointer;
+    }
+
+    .card:hover {
+      background-color: #ccc;
+    }
+  </style>
+</head>
+
+<body>
+  <button>访问文件夹</button>
+  <div class="contents">
+    <div class="left catalogue">
+    </div>
+    <div class="right content"></div>
+  </div>
+  <script>
+    const btn = document.querySelector('button')
+    const contents = document.querySelector('.contents')
+    btn.addEventListener('click', async () => {
+      try {
+        const handle = await showDirectoryPicker()
+        // 处理句柄
+        const root = await processHandle(handle)
+        // 渲染目录
+        renderCatalogue(root, contents.querySelector('.catalogue'))
+      } catch (e) {
+        // 用户拒绝查看文件夹内容
+      }
+    })
+
+    // 处理句柄
+    async function processHandle(handle) {
+      if (handle.kind === 'file') {
+        // 不是文件夹
+        return handle
+      }
+      handle.children = []
+      const iter = await handle.entries()
+      // iter 异步迭代器
+      for await (const info of iter) {
+        const subHandle = await processHandle(info[1]) // 递归处理
+        handle.children.push(subHandle)
+      }
+      return handle
+    }
+
+    // 渲染内容
+    async function renderContent(handle, dom) {
+      dom.innerHTML = ''
+      if (handle.kind === 'file') {
+        // 渲染文件内容
+        const file = await handle.getFile()
+        const content = await file.text()
+        dom.innerText = content
+      } else {
+        // 渲染文件列表
+        const ul = document.createElement('div')
+        ul.className = 'card-container'
+        handle.children.forEach(item => {
+          const li = document.createElement('div')
+          li.className = 'card'
+          li.innerText = item.name
+          li.addEventListener('click', (event) => {
+            event.stopPropagation() // 阻止冒泡, 防止点击 li 时触发 ul 的点击事件
+            renderContent(item, dom)
+          })
+          ul.appendChild(li)
+        })
+        dom.appendChild(ul)
+      }
+    }
+
+    // 渲染目录 ul 默认为文件夹  li 默认为文件
+    function renderCatalogue(handle, dom, subNode) {
+      // 清空目录
+      dom.innerHTML = ''
+      let ulWrapper = null
+      if (subNode === null || subNode === undefined) {
+        ulWrapper = document.createElement('div')
+        ulWrapper.className = 'ul-wrapper'
+        ulWrapper.innerText = handle.name
+      } else {
+        ulWrapper = subNode
+      }
+      const ulInner = document.createElement('div')
+      ulInner.className = 'ul-inner'
+      ulWrapper.appendChild(ulInner)
+      ulWrapper.addEventListener('click', (event) => {
+        event.stopPropagation(); // 阻止冒泡
+        renderContent(handle, contents.querySelector('.content'));
+        // 展开或者收起 让ul下的所有元素隐藏或者显示
+        ulInner.style.transition = 'all 0.3s'
+        ulInner.display = ulInner.display === 'none' ? 'block' : 'none'
+        // 展开收起动画
+        if (ulInner.display === 'none') {
+          ulInner.style.height = '0px'
+          ulInner.style.opacity = '0'
+          ulInner.style.visibility = 'hidden'
+        } else {
+          ulInner.style.height = 'auto'
+          const { height } = ulInner.getBoundingClientRect()
+          ulInner.style.height = '0px'
+          ulInner.offsetHeight
+          ulInner.style.height = height + 'px'
+          ulInner.style.opacity = '1'
+          ulInner.style.visibility = 'visible'
+        }
+      })
+      if (!('children' in handle)) {
+        // 如果没有子文件
+        dom.appendChild(ulWrapper)
+      }
+      handle.children.forEach(item => {
+        // 如果是文件
+        if (item.kind === 'file') {
+          const listItem = document.createElement('div')
+          listItem.className = 'list-item'
+          listItem.innerText = item.name
+          listItem.addEventListener('click', (event) => {
+            event.stopPropagation() // 阻止冒泡, 防止点击 li 时触发 ul 的点击事件
+            renderContent(item, contents.querySelector('.content'))
+          })
+          ulInner.appendChild(listItem)
+        } else {
+          // 如果是文件夹
+          const subNode = document.createElement('div')
+          subNode.className = 'ul-wrapper'
+          subNode.innerText = item.name
+          renderCatalogue(item, dom, subNode)
+          ulInner.appendChild(subNode)
+        }
+      })
+      dom.appendChild(ulWrapper)
+    }
+
+  </script>
+</body>
+
+</html>
